@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPVM 3 Quick Response Code</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+header{padding:16px 24px;font-size:22px;font-weight:700;background:#1e293b}
+main{display:grid;grid-template-columns:1fr 340px;gap:20px;padding:20px;max-width:1100px;margin:auto}
+@media(max-width:800px){main{grid-template-columns:1fr}}
+.card{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px}
+h3{margin:0 0 10px;font-size:15px;color:#94a3b8}
+input,select,button,textarea{width:100%;padding:9px;margin:4px 0;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0}
+button{background:#6366f1;border:0;cursor:pointer;font-weight:600}button:hover{background:#4f46e5}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.sw{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.sw div{height:30px;border-radius:6px;cursor:pointer;border:2px solid #334155}
+.sw div.on{border-color:#fff}
+canvas{width:100%;max-width:340px;background:repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0 0/20px 20px;border-radius:8px;display:block;margin:auto}
+.h{display:flex;gap:8px;align-items:center;border-bottom:1px solid #334155;padding:6px 0;font-size:13px}
+.h img{width:44px;height:44px;border-radius:4px;background:#fff}.h span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.h button{width:auto;padding:4px 8px;background:#be123c}
+</style></head><body>
+<header>▦ SPVM 3 Quick Response Code</header>
+<main>
+<div>
+ <div class="card"><h3>1. QR type &amp; content</h3>
+  <select id="type"></select><div id="fields"></div></div>
+ <div class="card"><h3>2. Module shape (15) × Eye style (10) = 150 designs</h3>
+  <div class="row"><select id="shape"></select><select id="eye"></select></div>
+  <button id="rand" style="background:#334155">🎲 Random design</button></div>
+ <div class="card"><h3>3. Colours (24 presets + custom)</h3>
+  <div class="sw" id="sw"></div>
+  <div class="row"><label>Foreground<input type="color" id="fg" value="#000000"></label>
+  <label>Background<input type="color" id="bg" value="#ffffff"></label></div></div>
+ <div class="card"><h3>4. Centre logo / photo (optional)</h3><input type="file" id="logo" accept="image/*"></div>
+<div class="card"><h3>5. Frame, background &amp; text</h3>
+  <div class="row"><select id="frame"></select><select id="occ"></select></div>
+  <div class="row"><label>Frame colour<input type="color" id="fc" value="#000000"></label>
+  <label>Frame background<input type="color" id="fbg" value="#ffffff"></label></div>
+  <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="tr" style="width:auto">Transparent background</label>
+  <h3 style="margin-top:12px">Additional text</h3>
+  <input id="txt" placeholder="Additional text (e.g. SCAN ME)">
+  <div class="row"><input id="fs" placeholder="Font size (auto)"><label>Text colour<input type="color" id="tc" value="#9c3aaf"></label></div></div>
+</div>
+<div>
+ <div class="card"><canvas id="main" width="800" height="900"></canvas>
+  <input id="name" placeholder="Design name">
+  <div class="row"><button id="dl">⬇ PNG</button><button id="save">💾 Save</button></div>
+  <div id="msg" style="font-size:13px;color:#94a3b8"></div></div>
+ <div class="card"><h3>History (MySQL)</h3><div id="hist"></div></div>
+</div></main>
+<script>
+const $=id=>document.getElementById(id);
+const TYPES={
+ url:{l:"Website URL",f:[["u","https://example.com"]],b:v=>v.u},
+ text:{l:"Plain text",f:[["t","Your text"]],b:v=>v.t},
+ wifi:{l:"Wi-Fi",f:[["s","Network name"],["p","Password"],["e","WPA"]],b:v=>`WIFI:T:${v.e||"WPA"};S:${v.s};P:${v.p};;`},
+ vcard:{l:"vCard",f:[["n","Full name"],["p","Phone"],["m","Email"],["o","Company"]],b:v=>`BEGIN:VCARD\nVERSION:3.0\nFN:${v.n}\nORG:${v.o||""}\nTEL:${v.p||""}\nEMAIL:${v.m||""}\nEND:VCARD`},
+ email:{l:"Email",f:[["m","Email address"],["s","Subject"],["b","Body"]],b:v=>`mailto:${v.m}?subject=${encodeURIComponent(v.s||"")}&body=${encodeURIComponent(v.b||"")}`},
+ phone:{l:"Phone call",f:[["p","+91..."]],b:v=>`tel:${v.p}`},
+ sms:{l:"SMS",f:[["p","Phone"],["m","Message"]],b:v=>`SMSTO:${v.p}:${v.m||""}`},
+ whatsapp:{l:"WhatsApp",f:[["p","Number with country code, no +"],["m","Message"]],b:v=>`https://wa.me/${v.p}?text=${encodeURIComponent(v.m||"")}`},
+ geo:{l:"Location",f:[["a","Latitude"],["o","Longitude"]],b:v=>`geo:${v.a},${v.o}`},
+ upi:{l:"UPI payment",f:[["id","UPI ID"],["n","Payee name"],["a","Amount (optional)"]],b:v=>`upi://pay?pa=${v.id}&pn=${encodeURIComponent(v.n||"")}${v.a?"&am="+v.a:""}&cu=INR`},
+ insta:{l:"Instagram",f:[["u","username"]],b:v=>`https://instagram.com/${v.u}`},
+ fb:{l:"Facebook",f:[["u","page/profile name"]],b:v=>`https://facebook.com/${v.u}`},
+ yt:{l:"YouTube",f:[["u","video or channel URL"]],b:v=>v.u},
+ linkedin:{l:"LinkedIn",f:[["u","profile name"]],b:v=>`https://linkedin.com/in/${v.u}`}
+};
+const SHAPES=["Square","Rounded","Circle","Diamond","Small dot","Plus","Star","Heart","Hexagon","Triangle","Leaf","H-bar","V-bar","Squircle","Cross"];
+const EYES=[[0,0],[.15,.1],[.3,.3],[.5,.5],[0,.5],[.5,0],[.3,0],[0,.3],[.25,.5],[.5,.25]];
+const EYEN=["Sharp","Soft","Rounded","Circle","Sharp+Dot","Circle+Sharp","Rounded+Sharp","Sharp+Round","Soft+Dot","Circle+Soft"];
+const PAL=[["#000000","#ffffff"],["#1e3a8a","#e0f2fe"],["#065f46","#ecfdf5"],["#7f1d1d","#fef2f2"],["#581c87","#faf5ff"],["#c2410c","#fff7ed"],["#0f766e","#f0fdfa"],["#be185d","#fdf2f8"],["#ffffff","#111827"],["#fde047","#1e1b4b"],["#22d3ee","#0f172a"],["#4ade80","#052e16"],["#f472b6","#27272a"],["#a78bfa","#1e1b4b"],["#fb923c","#431407"],["#1d4ed8","#ffffff"],["#15803d","#fefce8"],["#b91c1c","#ffffff"],["#4338ca","#eef2ff"],["#0e7490","#ecfeff"],["#a16207","#fefce8"],["#374151","#f3f4f6"],["#9d174d","#fff1f2"],["#166534","#f0fdf4"]];
+let img=null;
+$("type").innerHTML=Object.entries(TYPES).map(([k,t])=>`<option value=${k}>${t.l}</option>`).join("");
+$("shape").innerHTML=SHAPES.map((s,i)=>`<option value=${i}>Module: ${s}</option>`).join("");
+$("eye").innerHTML=EYEN.map((s,i)=>`<option value=${i}>Eyes: ${s}</option>`).join("");
+$("sw").innerHTML=PAL.map((p,i)=>`<div data-i=${i} style="background:linear-gradient(135deg,${p[0]} 50%,${p[1]} 50%)"></div>`).join("");
+$("sw").onclick=e=>{const i=e.target.dataset.i;if(i==null)return;$("fg").value=PAL[i][0];$("bg").value=PAL[i][1];draw()};
+function fields(){const t=TYPES[$("type").value];$("fields").innerHTML=t.f.map(([k,p])=>`<input data-k=${k} placeholder="${p}">`).join("");draw()}
+function vals(){const v={};document.querySelectorAll("#fields input").forEach(i=>v[i.dataset.k]=i.value);return v}
+function content(){return TYPES[$("type").value].b(vals())}
+function poly(c,pts){c.beginPath();pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fill()}
+function rr(c,x,y,w,h,r){c.beginPath();c.roundRect(x,y,w,h,r)}
+function mod(c,t,x,y,s){const m=s/2,cx=x+m,cy=y+m;c.beginPath();
+ switch(t){
+ case 0:c.fillRect(x,y,s+.5,s+.5);break;
+ case 1:rr(c,x,y,s,s,s*.3);c.fill();break;
+ case 2:c.arc(cx,cy,m,0,7);c.fill();break;
+ case 3:poly(c,[[cx,y],[x+s,cy],[cx,y+s],[x,cy]]);break;
+ case 4:c.arc(cx,cy,s*.33,0,7);c.fill();break;
+ case 5:c.fillRect(x+s*.35,y,s*.3,s);c.fillRect(x,y+s*.35,s,s*.3);break;
+ case 6:{const p=[];for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?m*.45:m;p.push([cx+r*Math.cos(a),cy+r*Math.sin(a)])}poly(c,p);break}
+ case 7:c.moveTo(cx,y+s*.9);c.bezierCurveTo(x-s*.2,cy,x+s*.1,y-s*.1,cx,y+s*.3);c.bezierCurveTo(x+s*.9,y-s*.1,x+s*1.2,cy,cx,y+s*.9);c.fill();break;
+ case 8:{const p=[];for(let i=0;i<6;i++){const a=i*Math.PI/3;p.push([cx+m*Math.cos(a),cy+m*Math.sin(a)])}poly(c,p);break}
+ case 9:poly(c,[[cx,y],[x+s,y+s],[x,y+s]]);break;
+ case 10:c.roundRect(x,y,s,s,[m,0,m,0]);c.fill();break;
+ case 11:c.fillRect(x,y+s*.15,s+.5,s*.7);break;
+ case 12:c.fillRect(x+s*.15,y,s*.7,s+.5);break;
+ case 13:rr(c,x,y,s,s,s*.45);c.fill();break;
+ case 14:c.lineWidth=s*.25;c.strokeStyle=c.fillStyle;c.moveTo(x+s*.15,y+s*.15);c.lineTo(x+s*.85,y+s*.85);c.moveTo(x+s*.85,y+s*.15);c.lineTo(x+s*.15,y+s*.85);c.stroke();}}
+function eye(c,ei,x,y,s){const [ro,ri]=EYES[ei];
+ c.beginPath();c.roundRect(x,y,7*s,7*s,ro*7*s);c.roundRect(x+s,y+s,5*s,5*s,ro*5*s);c.fill("evenodd");
+ c.beginPath();c.roundRect(x+2*s,y+2*s,3*s,3*s,ri*3*s);c.fill()}
+function draw(){
+ const cv=qc,c=qc.getContext("2d"),txt=content()||" ";
+ const q=qrcode(0,"H");q.addData(txt);q.make();
+ const n=q.getModuleCount(),pad=4,s=cv.width/(n+pad*2),sh=+$("shape").value,ey=+$("eye").value;
+ c.fillStyle=$("bg").value;c.fillRect(0,0,cv.width,cv.height);c.fillStyle=$("fg").value;
+ const inEye=(r,k)=>(r<7&&k<7)||(r<7&&k>=n-7)||(r>=n-7&&k<7);
+ for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k)&&!inEye(r,k))mod(c,sh,(k+pad)*s,(r+pad)*s,s);
+ c.fillStyle=$("fg").value;
+ [[0,0],[0,n-7],[n-7,0]].forEach(([r,k])=>eye(c,ey,(k+pad)*s,(r+pad)*s,s));
+ if(img){const L=cv.width*.22,x=(cv.width-L)/2;c.fillStyle=$("bg").value;c.fillRect(x-8,x-8,L+16,L+16);c.drawImage(img,x,x,L,L)}frame()}
+const qc=document.createElement("canvas");qc.width=qc.height=600;
+const FR=["No frame","Corner brackets","Thin border","Thick rounded","Double border","Dashed border","Top banner","Bottom banner","Side bars","Shadow card","Monitor","Laptop","Phone","Car"];
+const OCC=[["No occasion","",""],["Diwali","🪔","#f59e0b"],["Holi","🎨","#ec4899"],["Eid","🌙","#059669"],["Christmas","🎄","#b91c1c"],["New Year","🎆","#6366f1"],["Birthday","🎂","#db2777"],["Wedding","💍","#a16207"],["Easter","🐣","#84cc16"],["Halloween","🎃","#ea580c"],["Thanksgiving","🦃","#92400e"],["Valentine","❤️","#e11d48"],["Independence Day","🇮🇳","#ea580c"]];
+$("frame").innerHTML=FR.map((n,i)=>`<option value=${i}>Frame: ${n}</option>`).join("");
+$("occ").innerHTML=OCC.map((o,i)=>`<option value=${i}>${o[1]} ${o[0]}</option>`).join("");
+function frame(){
+ const c=$("main").getContext("2d"),f=+$("frame").value,col=$("fc").value,tx=$("txt").value;
+ c.setLineDash([]);c.shadowBlur=0;c.clearRect(0,0,800,900);
+ if(!$("tr").checked){c.fillStyle=$("fbg").value;c.fillRect(0,0,800,900)}
+ c.strokeStyle=col;c.fillStyle=col;c.lineJoin="round";c.lineCap="round";c.lineWidth=12;
+ const rect=(x,y,w,h,r)=>{c.beginPath();c.roundRect(x,y,w,h,r)};
+ switch(f){
+ case 1:c.lineWidth=16;[[60,50,1,1],[740,50,-1,1],[60,730,1,-1],[740,730,-1,-1]].forEach(([x,y,a,b])=>{c.beginPath();c.moveTo(x,y+b*100);c.lineTo(x,y);c.lineTo(x+a*100,y);c.stroke()});break;
+ case 2:c.lineWidth=10;c.strokeRect(60,50,680,680);break;
+ case 3:c.lineWidth=24;rect(60,50,680,680,70);c.stroke();break;
+ case 4:c.lineWidth=8;c.strokeRect(50,40,700,700);c.strokeRect(68,58,664,664);break;
+ case 5:c.lineWidth=10;c.setLineDash([26,16]);rect(60,50,680,680,30);c.stroke();break;
+ case 6:rect(100,10,600,72,22);c.fill();break;
+ case 7:rect(100,700,600,82,22);c.fill();break;
+ case 8:c.fillRect(40,60,24,660);c.fillRect(736,60,24,660);break;
+ case 9:c.shadowColor="rgba(0,0,0,.35)";c.shadowBlur=30;c.shadowOffsetY=10;c.fillStyle="#fff";rect(60,50,680,680,40);c.fill();c.shadowBlur=0;c.shadowOffsetY=0;break;
+ case 10:c.lineWidth=26;rect(50,40,700,680,30);c.stroke();c.fillRect(360,725,80,35);c.fillRect(270,760,260,22);break;
+ case 11:c.lineWidth=24;rect(70,50,660,660,30);c.stroke();rect(30,725,740,42,[0,0,40,40]);c.fill();break;
+ case 12:c.lineWidth=26;rect(60,30,680,740,90);c.stroke();rect(330,42,140,16,8);c.fill();break;
+ case 13:c.lineWidth=22;rect(40,50,720,650,[130,130,40,40]);c.stroke();[190,610].forEach(x=>{c.beginPath();c.arc(x,715,52,0,7);c.fill();c.fillStyle="#fff";c.beginPath();c.arc(x,715,20,0,7);c.fill();c.fillStyle=col});c.beginPath();c.arc(80,655,20,0,7);c.arc(720,655,20,0,7);c.fill();break;}
+ c.drawImage(qc,100,90,600,600);
+ const o=OCC[+$("occ").value];
+ if(o[1]){c.font="64px serif";c.textAlign="center";c.textBaseline="alphabetic";[[56,82],[744,82],[56,882],[744,882]].forEach(([x,y])=>c.fillText(o[1],x,y))}
+ if(tx||f==6||f==7){const t=tx||"SCAN ME",cap=(f==6||f==7)?52:90;let z=$("fs").value;z=+z||Math.min(cap,640/(t.length*.62));
+  c.font=`700 ${z}px sans-serif`;c.textAlign="center";c.textBaseline="middle";c.fillStyle=$("tc").value;c.fillText(t,400,f==6?47:f==7?741:840)}}
+$("type").onchange=fields;["shape","eye","fg","bg","frame","fc","fbg","tr","txt","fs","tc"].forEach(i=>$(i).oninput=draw);
+$("fields").oninput=draw;$("occ").oninput=()=>{const o=OCC[+$("occ").value];if(o[2])$("fc").value=o[2];draw()};
+$("logo").onchange=e=>{const f=e.target.files[0];if(!f){img=null;return draw()}const i=new Image();i.onload=()=>{img=i;draw()};i.src=URL.createObjectURL(f)};
+$("rand").onclick=()=>{$("shape").value=Math.floor(Math.random()*15);$("eye").value=Math.floor(Math.random()*10);const p=PAL[Math.floor(Math.random()*24)];$("fg").value=p[0];$("bg").value=p[1];draw()};
+$("dl").onclick=()=>{const a=document.createElement("a");a.href=$("main").toDataURL("image/png");a.download=($("name").value||"qr")+".png";a.click()};
+$("save").onclick=async()=>{const r=await fetch("/api/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:$("name").value,type:$("type").value,content:content(),shape:$("shape").value,eye:$("eye").value,fg:$("fg").value,bg:$("bg").value,png:$("main").toDataURL("image/png"),frame:$("frame").value,occ:$("occ").value,ftext:$("txt").value})});
+ $("msg").textContent=r.ok?"Saved ✔":"Save failed (is MySQL running?)";hist()};
+async function hist(){try{const r=await (await fetch("/api/history")).json();
+ $("hist").innerHTML=r.map(h=>`<div class=h><img src="${h.png_data}"><span>${h.name} · ${h.qr_type}</span><button onclick="del(${h.id})">✕</button></div>`).join("")||"Nothing saved yet"}catch(e){}}
+async function del(id){await fetch("/api/history/"+id,{method:"DELETE"});hist()}
+fields();hist();
+</script></body></html>
